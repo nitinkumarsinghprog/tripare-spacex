@@ -11,8 +11,8 @@ import {
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import type { Launch } from "../../../api/schemas";
-import { getCachedLaunch } from "../../../database/launches.repository";
 import type { RootStackParamList } from "../../../navigation/RootNavigator";
+import { getCachedLaunch } from "../../../database/launches.repository";
 
 type Props = NativeStackScreenProps<RootStackParamList, "LaunchDetails">;
 
@@ -42,29 +42,21 @@ function getStatus(launch: Launch): {
 
 function formatDate(date: string): string {
   return new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
+    dateStyle: "full",
+    timeStyle: "short",
   }).format(new Date(date));
 }
 
 export function LaunchDetailsScreen({ route }: Props) {
-  const launchId = route.params?.launchId;
+  const { launchId } = route.params;
 
   const [launch, setLaunch] = useState<Launch | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
 
     async function loadLaunch(): Promise<void> {
-      if (!launchId) {
-        setIsLoading(false);
-        return;
-      }
-
       try {
         const cachedLaunch = await getCachedLaunch(launchId);
 
@@ -72,14 +64,14 @@ export function LaunchDetailsScreen({ route }: Props) {
           setLaunch(cachedLaunch);
         }
       } catch (error) {
-        console.error("Failed to load launch:", error);
+        console.error("Failed to load launch details:", error);
 
         if (mounted) {
           setLaunch(null);
         }
       } finally {
         if (mounted) {
-          setIsLoading(false);
+          setLoading(false);
         }
       }
     }
@@ -91,17 +83,7 @@ export function LaunchDetailsScreen({ route }: Props) {
     };
   }, [launchId]);
 
-  if (!launchId) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.errorTitle}>Launch not found</Text>
-
-        <Text style={styles.errorText}>No launch ID was provided.</Text>
-      </View>
-    );
-  }
-
-  if (isLoading) {
+  if (loading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" />
@@ -117,7 +99,7 @@ export function LaunchDetailsScreen({ route }: Props) {
         <Text style={styles.errorTitle}>Launch not found</Text>
 
         <Text style={styles.errorText}>
-          This launch is not available in the local database.
+          This launch is not available in the local cache.
         </Text>
       </View>
     );
@@ -126,6 +108,8 @@ export function LaunchDetailsScreen({ route }: Props) {
   const status = getStatus(launch);
 
   const webcastUrl = launch.links.webcast;
+  const articleUrl = launch.links.article;
+  const wikipediaUrl = launch.links.wikipedia;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -133,16 +117,29 @@ export function LaunchDetailsScreen({ route }: Props) {
 
       <View
         style={[
-          styles.statusBadge,
+          styles.badge,
           status.type === "success" && styles.successBadge,
           status.type === "failure" && styles.failureBadge,
           status.type === "upcoming" && styles.upcomingBadge,
         ]}
       >
-        <Text style={styles.statusText}>{status.label}</Text>
+        <Text style={styles.badgeText}>{status.label}</Text>
       </View>
 
-      <Text style={styles.date}>{formatDate(launch.date_utc)}</Text>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Launch Information</Text>
+
+        <InfoRow label="Date" value={formatDate(launch.date_utc)} />
+
+        <InfoRow
+          label="Flight Number"
+          value={String(launch.flight_number ?? "—")}
+        />
+
+        <InfoRow label="Rocket" value={launch.rocket} />
+
+        <InfoRow label="Launchpad" value={launch.launchpad ?? "Unknown"} />
+      </View>
 
       {launch.details && (
         <View style={styles.section}>
@@ -152,19 +149,6 @@ export function LaunchDetailsScreen({ route }: Props) {
         </View>
       )}
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Mission Information</Text>
-
-        <InfoRow
-          label="Flight Number"
-          value={launch.flight_number?.toString() ?? "—"}
-        />
-
-        <InfoRow label="Rocket" value={launch.rocket} />
-
-        <InfoRow label="Launchpad" value={launch.launchpad ?? "Unknown"} />
-      </View>
-
       {launch.cores.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Core Information</Text>
@@ -173,14 +157,9 @@ export function LaunchDetailsScreen({ route }: Props) {
             <View key={`${launch.id}-core-${index}`} style={styles.coreCard}>
               <Text style={styles.coreTitle}>Core {index + 1}</Text>
 
-              <InfoRow label="Flight" value={core.flight?.toString() ?? "—"} />
+              <InfoRow label="Flight" value={String(core.flight ?? "—")} />
 
-              <InfoRow
-                label="Reused"
-                value={
-                  core.reused === null ? "Unknown" : core.reused ? "Yes" : "No"
-                }
-              />
+              <InfoRow label="Reused" value={core.reused ? "Yes" : "No"} />
 
               <InfoRow
                 label="Landing Attempt"
@@ -190,56 +169,56 @@ export function LaunchDetailsScreen({ route }: Props) {
               <InfoRow
                 label="Landing Success"
                 value={
-                  core.landing_success === null
+                  core.landing_success === null ||
+                  core.landing_success === undefined
                     ? "Unknown"
                     : core.landing_success
                       ? "Yes"
                       : "No"
                 }
               />
-
-              <InfoRow
-                label="Landing Type"
-                value={core.landing_type ?? "Unknown"}
-              />
-
-              <InfoRow label="Landpad" value={core.landpad ?? "Unknown"} />
             </View>
           ))}
         </View>
       )}
 
-      {webcastUrl && (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Watch launch webcast"
-          style={({ pressed }) => [
-            styles.webcastButton,
-            pressed && styles.pressed,
-          ]}
-          onPress={() => {
-            void Linking.openURL(webcastUrl);
-          }}
-        >
-          <Text style={styles.webcastText}>Watch Webcast</Text>
-        </Pressable>
+      {(webcastUrl || articleUrl || wikipediaUrl) && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Links</Text>
+
+          {webcastUrl && <LinkButton label="Watch Webcast" url={webcastUrl} />}
+
+          {articleUrl && <LinkButton label="Read Article" url={articleUrl} />}
+
+          {wikipediaUrl && <LinkButton label="Wikipedia" url={wikipediaUrl} />}
+        </View>
       )}
     </ScrollView>
   );
 }
 
-interface InfoRowProps {
-  label: string;
-  value: string;
-}
-
-function InfoRow({ label, value }: InfoRowProps) {
+function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.infoRow}>
-      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.label}>{label}</Text>
 
-      <Text style={styles.infoValue}>{value}</Text>
+      <Text style={styles.value}>{value}</Text>
     </View>
+  );
+}
+
+function LinkButton({ label, url }: { label: string; url: string }) {
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={label}
+      onPress={() => {
+        void Linking.openURL(url);
+      }}
+      style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]}
+    >
+      <Text style={styles.linkText}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -262,6 +241,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8fafc",
   },
 
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: "#6b7280",
+  },
+
   title: {
     fontSize: 28,
     lineHeight: 34,
@@ -269,17 +254,11 @@ const styles = StyleSheet.create({
     color: "#111827",
   },
 
-  date: {
-    marginTop: 10,
-    fontSize: 14,
-    color: "#6b7280",
-  },
-
-  statusBadge: {
+  badge: {
     alignSelf: "flex-start",
-    marginTop: 14,
+    marginTop: 12,
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 6,
     borderRadius: 999,
   },
 
@@ -295,7 +274,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#dbeafe",
   },
 
-  statusText: {
+  badgeText: {
     fontSize: 13,
     fontWeight: "700",
     color: "#111827",
@@ -311,10 +290,31 @@ const styles = StyleSheet.create({
   },
 
   sectionTitle: {
-    marginBottom: 12,
+    marginBottom: 14,
     fontSize: 17,
     fontWeight: "700",
     color: "#111827",
+  },
+
+  infoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 16,
+    paddingVertical: 8,
+  },
+
+  label: {
+    flex: 1,
+    fontSize: 13,
+    color: "#6b7280",
+  },
+
+  value: {
+    flex: 2,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#374151",
+    textAlign: "right",
   },
 
   details: {
@@ -323,64 +323,37 @@ const styles = StyleSheet.create({
     color: "#4b5563",
   },
 
-  infoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 16,
-    paddingVertical: 9,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
-  },
-
-  infoLabel: {
-    flex: 1,
-    fontSize: 13,
-    color: "#6b7280",
-  },
-
-  infoValue: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#111827",
-    textAlign: "right",
-  },
-
   coreCard: {
+    marginTop: 8,
     padding: 12,
     borderRadius: 10,
-    backgroundColor: "#f8fafc",
+    backgroundColor: "#f9fafb",
   },
 
   coreTitle: {
     marginBottom: 4,
     fontSize: 15,
     fontWeight: "700",
-    color: "#374151",
+    color: "#111827",
   },
 
-  webcastButton: {
-    marginTop: 24,
-    alignItems: "center",
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: "#111827",
+  linkButton: {
+    marginTop: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: "#eff6ff",
   },
 
-  webcastText: {
-    fontSize: 15,
+  linkText: {
+    fontSize: 14,
     fontWeight: "700",
-    color: "#ffffff",
+    color: "#2563eb",
+    textAlign: "center",
   },
 
   pressed: {
     opacity: 0.7,
-  },
-
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: "#6b7280",
   },
 
   errorTitle: {
@@ -392,7 +365,7 @@ const styles = StyleSheet.create({
   errorText: {
     marginTop: 8,
     fontSize: 14,
-    textAlign: "center",
     color: "#6b7280",
+    textAlign: "center",
   },
 });
