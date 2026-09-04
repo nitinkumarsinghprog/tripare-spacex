@@ -7,6 +7,22 @@ export interface Bookmark {
   updatedAt: string;
 }
 
+type BookmarkRow = {
+  launch_id: string;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function toBookmark(row: BookmarkRow): Bookmark {
+  return {
+    launchId: row.launch_id,
+    note: row.note,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 export async function saveBookmark(
   launchId: string,
   note: string | null = null,
@@ -62,15 +78,31 @@ export async function isBookmarked(launchId: string): Promise<boolean> {
   return row !== null;
 }
 
+export async function getBookmark(
+  launchId: string,
+): Promise<Bookmark | null> {
+  const db = await getDatabase();
+
+  const row = await db.getFirstAsync<BookmarkRow>(
+    `
+    SELECT
+      launch_id,
+      note,
+      created_at,
+      updated_at
+    FROM bookmarks
+    WHERE launch_id = ?
+    `,
+    launchId,
+  );
+
+  return row ? toBookmark(row) : null;
+}
+
 export async function getBookmarks(): Promise<Bookmark[]> {
   const db = await getDatabase();
 
-  const rows = await db.getAllAsync<{
-    launch_id: string;
-    note: string | null;
-    created_at: string;
-    updated_at: string;
-  }>(
+  const rows = await db.getAllAsync<BookmarkRow>(
     `
     SELECT
       launch_id,
@@ -82,10 +114,5 @@ export async function getBookmarks(): Promise<Bookmark[]> {
     `,
   );
 
-  return rows.map((row) => ({
-    launchId: row.launch_id,
-    note: row.note,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  }));
+  return rows.map(toBookmark);
 }

@@ -4,6 +4,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 
@@ -17,7 +18,6 @@ import { filterAndSortLaunches } from "../utils/launch-filters";
 import { useDebouncedValue } from "../../../hooks/useDebouncedValue";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-
 import type { RootStackParamList } from "../../../navigation/RootNavigator";
 
 export function LaunchListScreen() {
@@ -25,7 +25,6 @@ export function LaunchListScreen() {
 
   const search = useFilterStore((state) => state.search);
   const setSearch = useFilterStore((state) => state.setSearch);
-
   const debouncedSearch = useDebouncedValue(search, 300);
 
   const datePreset = useFilterStore((state) => state.datePreset);
@@ -69,6 +68,10 @@ export function LaunchListScreen() {
     });
   }
 
+  function handleBookmarksPress(): void {
+    navigation.navigate("Bookmarks");
+  }
+
   return (
     <View style={styles.container}>
       {isOffline && (
@@ -78,11 +81,26 @@ export function LaunchListScreen() {
       )}
 
       <View style={styles.header}>
-        <Text style={styles.title}>SpaceX Launches</Text>
+        <View style={styles.headerTop}>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>SpaceX Launches</Text>
 
-        <Text style={styles.count}>
-          {filteredLaunches.length} of {launches.length} launches
-        </Text>
+            <Text style={styles.count}>
+              {filteredLaunches.length} of {launches.length} launches
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.bookmarksButton}
+            onPress={handleBookmarksPress}
+            accessibilityRole="button"
+            accessibilityLabel="Open bookmarks"
+            activeOpacity={0.7}
+          >
+            <Text style={styles.bookmarksIcon}>🔖</Text>
+            <Text style={styles.bookmarksText}>Bookmarks</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <TextInput
@@ -169,6 +187,16 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
 
+  headerTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  headerText: {
+    flex: 1,
+  },
+
   title: {
     fontSize: 28,
     fontWeight: "800",
@@ -179,6 +207,30 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 14,
     color: "#6b7280",
+  },
+
+  bookmarksButton: {
+    minHeight: 44,
+    paddingHorizontal: 12,
+    marginLeft: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    backgroundColor: "#ffffff",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  bookmarksIcon: {
+    fontSize: 18,
+    marginRight: 6,
+  },
+
+  bookmarksText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#111827",
   },
 
   searchInput: {

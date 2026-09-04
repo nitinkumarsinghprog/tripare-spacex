@@ -97,28 +97,22 @@ async function getCachedOrSeedLaunches(): Promise<
 > {
   let launches = await getCachedLaunches();
 
-  // Development fixtures are deterministic.
-  // Refresh them so changes to fixture data (such as Media URLs)
-  // are reflected in SQLite.
   if (launches.length > 0) {
-    const isFixtureData = launches.some((launch) =>
-      launch.id.startsWith("fixture-launch-"),
+    const hasOutdatedFixtureMedia = launches.some(
+      (launch) =>
+        launch.id.startsWith("fixture-launch-") &&
+        (launch.links.patch.small !== null ||
+          launch.links.patch.large !== null ||
+          launch.links.webcast !== null ||
+          launch.links.article !== null ||
+          launch.links.wikipedia !== null),
     );
 
-    if (isFixtureData) {
-      logger.info(
-        "Development fixtures detected; refreshing SQLite fixture data",
-      );
+    if (hasOutdatedFixtureMedia) {
+      logger.info("Updating development fixtures to remove placeholder media");
 
       await seedLaunchFixtures();
-
       launches = await getCachedLaunches();
-
-      logger.info(
-        `Development fixtures refreshed: ${launches.length} launches`,
-      );
-
-      return launches;
     }
 
     return launches;
@@ -142,65 +136,21 @@ export async function initializeSync(): Promise<SyncResult> {
   // 2. Run migrations
   await runMigrations();
 
-  // 3. Get cached launches and make sure launchpads exist
+  // 3. Return locally available data immediately. Remote synchronization is
+  // started in the background by useLaunches so a slow network cannot block
+  // the initial screen.
   const cachedLaunches = await getCachedOrSeedLaunches();
-
   const cachedSyncTime = await getLastSyncTime();
 
-  // 4. Check network
-  const networkAvailable = await isNetworkAvailable();
-
-  if (!networkAvailable) {
-    logger.info("Offline: using cached launches");
-
-    return {
-      source: "cache",
-      launches: cachedLaunches,
-      lastSyncedAt: cachedSyncTime,
-      error:
-        cachedLaunches.length > 0
-          ? null
-          : new Error("No cached launch data available"),
-    };
-  }
-
-  // 5. Try SpaceX API
-  try {
-    const launches = await fetchWithRetry();
-
-    await saveLaunches(launches);
-
-    // Keep launchpad fixtures available even when
-    // the launchpad API is unavailable.
-    await ensureLaunchpadFixtures();
-
-    const lastSyncedAt = await getLastSyncTime();
-
-    logger.info(`Launch sync completed: ${launches.length} launches`);
-
-    return {
-      source: "network",
-      launches,
-      lastSyncedAt,
-      error: null,
-    };
-  } catch (error: unknown) {
-    logger.error("Launch sync failed; using cached data", error);
-
-    // API failure (including 525) should not affect
-    // launchpad availability from local SQLite.
-    await ensureLaunchpadFixtures();
-
-    return {
-      source: "cache",
-      launches: cachedLaunches,
-      lastSyncedAt: cachedSyncTime,
-      error:
-        error instanceof Error
-          ? error
-          : new Error("Unable to synchronize launches"),
-    };
-  }
+  return {
+    source: "cache",
+    launches: cachedLaunches,
+    lastSyncedAt: cachedSyncTime,
+    error:
+      cachedLaunches.length > 0
+        ? null
+        : new Error("No cached launch data available"),
+  };
 }
 
 export function syncLaunches(): Promise<SyncResult> {

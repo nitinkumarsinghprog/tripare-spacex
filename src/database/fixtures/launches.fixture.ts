@@ -76,13 +76,13 @@ function createLaunch(index: number): Launch {
     ],
     links: {
       patch: {
-        small: "https://images2.imgbox.com/94/f2/4c4f7V6K.png",
-        large: "https://images2.imgbox.com/94/f2/4c4f7V6K.png",
+        small: null,
+        large: null,
       },
-      webcast: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-      youtube_id: "dQw4w9WgXcQ",
-      wikipedia: "https://en.wikipedia.org/wiki/SpaceX",
-      article: "https://www.spacex.com/launches/",
+      webcast: null,
+      youtube_id: null,
+      wikipedia: null,
+      article: null,
     },
   };
 }

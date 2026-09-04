@@ -1,6 +1,6 @@
 import { getDatabase } from "./database";
 
-const CURRENT_SCHEMA_VERSION = 2;
+const CURRENT_SCHEMA_VERSION = 3;
 
 export async function runMigrations(): Promise<void> {
   const db = await getDatabase();
@@ -9,14 +9,18 @@ export async function runMigrations(): Promise<void> {
     "PRAGMA user_version",
   );
 
-  const currentVersion = result?.user_version ?? 0;
+  let currentVersion = result?.user_version ?? 0;
 
+  // Migration 1
   if (currentVersion < 1) {
     await db.execAsync(`
       PRAGMA user_version = 1;
     `);
+
+    currentVersion = 1;
   }
 
+  // Migration 2 - Launchpads
   if (currentVersion < 2) {
     await db.execAsync(`
       CREATE TABLE IF NOT EXISTS launchpads (
@@ -43,5 +47,34 @@ export async function runMigrations(): Promise<void> {
 
       PRAGMA user_version = 2;
     `);
+
+    currentVersion = 2;
+  }
+
+  // Migration 3 - Bookmarks
+  if (currentVersion < 3) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS bookmarks (
+        launch_id TEXT PRIMARY KEY NOT NULL,
+        note TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (launch_id) REFERENCES launches(id)
+          ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_bookmarks_updated
+        ON bookmarks(updated_at);
+
+      PRAGMA user_version = 3;
+    `);
+
+    currentVersion = 3;
+  }
+
+  if (currentVersion !== CURRENT_SCHEMA_VERSION) {
+    throw new Error(
+      `Database migration failed. Expected schema version ${CURRENT_SCHEMA_VERSION}, got ${currentVersion}.`,
+    );
   }
 }

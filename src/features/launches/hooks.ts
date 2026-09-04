@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { initializeSync } from "../../services/sync.service";
+import { initializeSync, syncLaunches } from "../../services/sync.service";
 import { fetchLaunchpad } from "../../api/launchpads";
 import {
   getCachedLaunchpad,
@@ -13,9 +13,23 @@ export const launchpadQueryKey = (launchpadId: string) =>
   ["launchpad", launchpadId] as const;
 
 export function useLaunches() {
+  const queryClient = useQueryClient();
+
   return useQuery({
     queryKey: launchQueryKey,
-    queryFn: initializeSync,
+    queryFn: async () => {
+      const cachedResult = await initializeSync();
+
+      void syncLaunches()
+        .then((syncedResult) => {
+          queryClient.setQueryData(launchQueryKey, syncedResult);
+        })
+        .catch((error: unknown) => {
+          console.error("Failed to synchronize launches:", error);
+        });
+
+      return cachedResult;
+    },
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 60,
     retry: false,

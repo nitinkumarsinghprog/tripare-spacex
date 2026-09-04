@@ -1,18 +1,32 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+
 import {
   Image,
+  Keyboard,
   Linking,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
+
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { useFocusEffect } from "@react-navigation/native";
 
 import type { RootStackParamList } from "../../../navigation/RootNavigator";
+
 import { getCachedLaunch } from "../../../database/launches.repository";
+
+import {
+  getBookmark,
+  removeBookmark,
+  saveBookmark,
+} from "../../../database/bookmarks.repository";
+
 import type { Launch } from "../../../api/schemas";
+
 import { useLaunchpad } from "../hooks";
 
 type Props = NativeStackScreenProps<RootStackParamList, "LaunchDetails">;
@@ -57,6 +71,16 @@ export function LaunchDetailsScreen({ route }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<DetailsTab>("overview");
 
+  const [bookmarked, setBookmarked] = useState(false);
+  const [note, setNote] = useState("");
+  const [noteEditorVisible, setNoteEditorVisible] = useState(false);
+  const [bookmarkLoading, setBookmarkLoading] = useState(false);
+
+  const getSavedBookmark = useCallback(
+    () => getBookmark(launchId),
+    [launchId],
+  );
+
   useEffect(() => {
     let mounted = true;
 
@@ -66,9 +90,11 @@ export function LaunchDetailsScreen({ route }: Props) {
 
         const cachedLaunch = await getCachedLaunch(launchId);
 
-        if (mounted) {
-          setLaunch(cachedLaunch);
+        if (!mounted) {
+          return;
         }
+
+        setLaunch(cachedLaunch);
       } finally {
         if (mounted) {
           setIsLoading(false);
@@ -82,6 +108,82 @@ export function LaunchDetailsScreen({ route }: Props) {
       mounted = false;
     };
   }, [launchId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      void getSavedBookmark()
+        .then((savedBookmark) => {
+          if (active) {
+            setBookmarked(savedBookmark !== null);
+            setNote(savedBookmark?.note ?? "");
+            setNoteEditorVisible(false);
+          }
+        })
+        .catch((error) => {
+          if (active) {
+            console.error("Failed to load bookmark:", error);
+          }
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [getSavedBookmark]),
+  );
+
+  async function handleBookmarkToggle(): Promise<void> {
+    if (!launch || bookmarkLoading) {
+      return;
+    }
+
+    try {
+      setBookmarkLoading(true);
+
+      if (bookmarked) {
+        await removeBookmark(launch.id);
+
+        setBookmarked(false);
+        setNote("");
+        setNoteEditorVisible(false);
+      } else {
+        await saveBookmark(
+          launch.id,
+          note.trim().length > 0 ? note.trim() : null,
+        );
+
+        setBookmarked(true);
+        setNoteEditorVisible(true);
+      }
+    } catch (error) {
+      console.error("Failed to update bookmark:", error);
+    } finally {
+      setBookmarkLoading(false);
+    }
+  }
+
+  async function handleSaveNote(): Promise<void> {
+    if (!launch || !bookmarked || bookmarkLoading) {
+      return;
+    }
+
+    try {
+      setBookmarkLoading(true);
+
+      await saveBookmark(
+        launch.id,
+        note.trim().length > 0 ? note.trim() : null,
+      );
+
+      Keyboard.dismiss();
+      setNoteEditorVisible(false);
+    } catch (error) {
+      console.error("Failed to save bookmark note:", error);
+    } finally {
+      setBookmarkLoading(false);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -133,7 +235,22 @@ export function LaunchDetailsScreen({ route }: Props) {
       </ScrollView>
 
       {activeTab === "overview" && (
-        <OverviewTab launch={launch} status={status} />
+        <OverviewTab
+          launch={launch}
+          status={status}
+          bookmarked={bookmarked}
+          note={note}
+          noteEditorVisible={noteEditorVisible}
+          bookmarkLoading={bookmarkLoading}
+          onNoteChange={setNote}
+          onEditNote={() => setNoteEditorVisible(true)}
+          onBookmarkToggle={() => {
+            void handleBookmarkToggle();
+          }}
+          onSaveNote={() => {
+            void handleSaveNote();
+          }}
+        />
       )}
 
       {activeTab === "launchpad" && (
@@ -148,14 +265,34 @@ export function LaunchDetailsScreen({ route }: Props) {
 function OverviewTab({
   launch,
   status,
+  bookmarked,
+  note,
+  noteEditorVisible,
+  bookmarkLoading,
+  onNoteChange,
+  onEditNote,
+  onBookmarkToggle,
+  onSaveNote,
 }: {
   launch: Launch;
   status: ReturnType<typeof getStatus>;
+  bookmarked: boolean;
+  note: string;
+  noteEditorVisible: boolean;
+  bookmarkLoading: boolean;
+  onNoteChange: (value: string) => void;
+  onEditNote: () => void;
+  onBookmarkToggle: () => void;
+  onSaveNote: () => void;
 }) {
   const formattedDate = new Date(launch.date_utc).toLocaleString();
 
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.header}>
         <Text style={styles.title}>{launch.name}</Text>
 
@@ -169,6 +306,88 @@ function OverviewTab({
         >
           <Text style={styles.statusText}>{status.label}</Text>
         </View>
+      </View>
+
+      <View style={styles.bookmarkSection}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            bookmarked ? "Remove bookmark" : "Bookmark launch"
+          }
+          accessibilityState={{ disabled: bookmarkLoading }}
+          disabled={bookmarkLoading}
+          onPress={onBookmarkToggle}
+          style={({ pressed }) => [
+            styles.bookmarkButton,
+            bookmarked && styles.bookmarkedButton,
+            pressed && styles.buttonPressed,
+          ]}
+        >
+          <Text
+            style={[
+              styles.bookmarkButtonText,
+              bookmarked && styles.bookmarkedButtonText,
+            ]}
+          >
+            {bookmarkLoading
+              ? "Saving..."
+              : bookmarked
+                ? "★ Bookmarked"
+                : "☆ Bookmark"}
+          </Text>
+        </Pressable>
+
+        {bookmarked && noteEditorVisible && (
+          <View style={styles.noteContainer}>
+            <Text style={styles.noteLabel}>Personal Note</Text>
+
+            <TextInput
+              accessibilityLabel="Bookmark note"
+              placeholder="Add a note about this launch..."
+              placeholderTextColor="#9ca3af"
+              value={note}
+              onChangeText={onNoteChange}
+              multiline
+              textAlignVertical="top"
+              style={styles.noteInput}
+            />
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Save bookmark note"
+              disabled={bookmarkLoading}
+              onPress={onSaveNote}
+              style={({ pressed }) => [
+                styles.saveNoteButton,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Text style={styles.saveNoteButtonText}>
+                {bookmarkLoading ? "Saving..." : "Save Note"}
+              </Text>
+            </Pressable>
+          </View>
+        )}
+
+        {bookmarked && !noteEditorVisible && (
+          <View style={styles.savedNoteContainer}>
+            {note ? <Text style={styles.savedNote}>{note}</Text> : null}
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={note ? "Edit bookmark note" : "Add bookmark note"}
+              onPress={onEditNote}
+              style={({ pressed }) => [
+                styles.editNoteButton,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Text style={styles.editNoteButtonText}>
+                {note ? "Edit Note" : "Add Note"}
+              </Text>
+            </Pressable>
+          </View>
+        )}
       </View>
 
       <View style={styles.section}>
@@ -283,23 +502,12 @@ function LaunchpadTab({ launchpadId }: { launchpadId: string | null }) {
 }
 
 function MediaTab({ launch }: { launch: Launch }) {
-  console.log("===== MEDIA DEBUG =====");
-  console.log("LAUNCH ID:", launch.id);
-  console.log("LAUNCH LINKS:", JSON.stringify(launch.links, null, 2));
-  console.log("PATCH:", launch.links?.patch);
-  console.log("WEBCAST:", launch.links?.webcast);
-  console.log("ARTICLE:", launch.links?.article);
-  console.log("WIKIPEDIA:", launch.links?.wikipedia);
-
   const patchUrl =
     launch.links?.patch?.large ?? launch.links?.patch?.small ?? null;
 
   const webcastUrl = launch.links?.webcast ?? null;
   const articleUrl = launch.links?.article ?? null;
   const wikipediaUrl = launch.links?.wikipedia ?? null;
-
-  console.log("FINAL PATCH URL:", patchUrl);
-  console.log("FINAL WEBCAST URL:", webcastUrl);
 
   const hasMedia =
     Boolean(patchUrl) ||
@@ -317,14 +525,9 @@ function MediaTab({ launch }: { launch: Launch }) {
             <Text style={styles.mediaTitle}>Mission Patch</Text>
 
             <Image
-              source={{
-                uri: patchUrl,
-              }}
+              source={{ uri: patchUrl }}
               style={styles.patchImage}
               resizeMode="contain"
-              onLoad={() => {
-                console.log("PATCH IMAGE LOADED:", patchUrl);
-              }}
               onError={(event) => {
                 console.log("PATCH IMAGE ERROR:", event.nativeEvent.error);
               }}
@@ -505,19 +708,103 @@ const styles = StyleSheet.create({
     textTransform: "capitalize",
   },
 
-  activeBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: "#dcfce7",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
+  bookmarkSection: {
+    marginBottom: 20,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: "#f9fafb",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
   },
 
-  activeBadgeText: {
-    fontSize: 13,
+  bookmarkButton: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: "#111827",
+  },
+
+  bookmarkedButton: {
+    backgroundColor: "#f59e0b",
+  },
+
+  bookmarkButtonText: {
+    fontSize: 15,
     fontWeight: "700",
-    color: "#166534",
-    textTransform: "capitalize",
+    color: "#ffffff",
+  },
+
+  bookmarkedButtonText: {
+    color: "#ffffff",
+  },
+
+  noteContainer: {
+    marginTop: 16,
+  },
+
+  savedNoteContainer: {
+    marginTop: 12,
+  },
+
+  savedNote: {
+    marginBottom: 10,
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#374151",
+  },
+
+  editNoteButton: {
+    alignSelf: "flex-start",
+    minHeight: 36,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: "#e5e7eb",
+  },
+
+  editNoteButtonText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#374151",
+  },
+
+  noteLabel: {
+    marginBottom: 8,
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#374151",
+  },
+
+  noteInput: {
+    minHeight: 100,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 10,
+    backgroundColor: "#ffffff",
+    fontSize: 14,
+    color: "#111827",
+  },
+
+  saveNoteButton: {
+    minHeight: 44,
+    marginTop: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+    backgroundColor: "#374151",
+  },
+
+  saveNoteButtonText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#ffffff",
+  },
+
+  buttonPressed: {
+    opacity: 0.7,
   },
 
   section: {
@@ -589,6 +876,21 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
+  activeBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "#dcfce7",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+
+  activeBadgeText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#166534",
+    textTransform: "capitalize",
+  },
+
   mediaCard: {
     alignItems: "center",
     marginBottom: 20,
@@ -609,12 +911,6 @@ const styles = StyleSheet.create({
   patchImage: {
     width: 220,
     height: 220,
-  },
-
-  mediaInfo: {
-    fontSize: 14,
-    color: "#6b7280",
-    textAlign: "center",
   },
 
   actionButton: {
