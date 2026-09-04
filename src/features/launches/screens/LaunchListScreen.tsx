@@ -10,10 +10,15 @@ import {
 import type { Launch } from "../../../api/schemas";
 import { useLaunches } from "../hooks";
 import { LaunchCard } from "../components/LaunchCard";
+import { LaunchFilters } from "../components/LaunchFilters";
 import { useFilterStore } from "../../../store/filter.store";
 import { useAppStore } from "../../../store/app.store";
 import { filterAndSortLaunches } from "../utils/launch-filters";
 import { useDebouncedValue } from "../../../hooks/useDebouncedValue";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+
+import type { RootStackParamList } from "../../../navigation/RootNavigator";
 
 export function LaunchListScreen() {
   const { data, isFetching, refetch } = useLaunches();
@@ -34,6 +39,21 @@ export function LaunchListScreen() {
 
   const launches = data?.launches ?? [];
 
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+
+  const availableRocketIds = Array.from(
+    new Set(launches.map((launch) => launch.rocket)),
+  );
+
+  const availableLaunchpadIds = Array.from(
+    new Set(
+      launches
+        .map((launch) => launch.launchpad)
+        .filter((id): id is string => id !== null),
+    ),
+  );
+
   const filteredLaunches = filterAndSortLaunches(launches, {
     search: debouncedSearch,
     datePreset,
@@ -44,7 +64,9 @@ export function LaunchListScreen() {
   });
 
   function handleLaunchPress(launch: Launch): void {
-    console.info("Launch selected:", launch.id);
+    navigation.navigate("LaunchDetails", {
+      launchId: launch.id,
+    });
   }
 
   return (
@@ -58,7 +80,9 @@ export function LaunchListScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>SpaceX Launches</Text>
 
-        <Text style={styles.count}>{filteredLaunches.length} launches</Text>
+        <Text style={styles.count}>
+          {filteredLaunches.length} of {launches.length} launches
+        </Text>
       </View>
 
       <TextInput
@@ -72,6 +96,11 @@ export function LaunchListScreen() {
         autoCorrect={false}
         autoCapitalize="none"
         returnKeyType="search"
+      />
+
+      <LaunchFilters
+        rocketIds={availableRocketIds}
+        launchpadIds={availableLaunchpadIds}
       />
 
       {lastSyncedAt && (

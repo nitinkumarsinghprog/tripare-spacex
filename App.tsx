@@ -3,15 +3,15 @@ import { StatusBar } from "expo-status-bar";
 
 import { queryClient } from "./src/services/query-client";
 import { useAppInitialization } from "./src/hooks/useAppInitialization";
-import { LaunchListScreen } from "./src/features/launches/screens/LaunchListScreen";
+import { RootNavigator } from "./src/navigation/RootNavigator";
 
 function AppContent() {
   useAppInitialization();
 
   return (
     <>
-      <LaunchListScreen />
-      <StatusBar style="dark" />
+      <RootNavigator />
+      <StatusBar style="auto" />
     </>
   );
 }
