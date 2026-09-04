@@ -8,9 +8,12 @@ import { initializeDatabase } from "../database/database";
 import { runMigrations } from "../database/migrations";
 import { isNetworkAvailable } from "./network.service";
 import { logger } from "./logging.service";
+import { seedLaunchFixtures } from "../database/fixtures/seed";
 
 const MAX_RETRIES = 3;
 const BASE_RETRY_DELAY = 1000;
+
+let syncPromise: Promise<SyncResult> | null = null;
 
 export interface SyncResult {
   source: "network" | "cache";
@@ -55,11 +58,33 @@ async function fetchWithRetry(): Promise<
   throw new Error("Launch synchronization failed");
 }
 
+async function getCachedOrSeedLaunches(): Promise<
+  Awaited<ReturnType<typeof getCachedLaunches>>
+> {
+  let launches = await getCachedLaunches();
+
+  if (launches.length > 0) {
+    return launches;
+  }
+
+  logger.info("No cached launches found; seeding development fixtures");
+
+  await seedLaunchFixtures();
+
+  // IMPORTANT:
+  // Read from SQLite again after seeding.
+  launches = await getCachedLaunches();
+
+  logger.info(`Development fixtures ready: ${launches.length} launches`);
+
+  return launches;
+}
+
 export async function initializeSync(): Promise<SyncResult> {
   await initializeDatabase();
   await runMigrations();
 
-  const cachedLaunches = await getCachedLaunches();
+  const cachedLaunches = await getCachedOrSeedLaunches();
   const cachedSyncTime = await getLastSyncTime();
 
   const networkAvailable = await isNetworkAvailable();
@@ -108,11 +133,23 @@ export async function initializeSync(): Promise<SyncResult> {
   }
 }
 
-export async function syncLaunches(): Promise<SyncResult> {
+export function syncLaunches(): Promise<SyncResult> {
+  if (syncPromise !== null) {
+    return syncPromise;
+  }
+
+  syncPromise = performSync();
+
+  return syncPromise.finally(() => {
+    syncPromise = null;
+  });
+}
+
+async function performSync(): Promise<SyncResult> {
   const networkAvailable = await isNetworkAvailable();
 
   if (!networkAvailable) {
-    const launches = await getCachedLaunches();
+    const launches = await getCachedOrSeedLaunches();
     const lastSyncedAt = await getLastSyncTime();
 
     return {
@@ -130,6 +167,8 @@ export async function syncLaunches(): Promise<SyncResult> {
 
     const lastSyncedAt = await getLastSyncTime();
 
+    logger.info(`Launch sync completed: ${launches.length} launches`);
+
     return {
       source: "network",
       launches,
@@ -137,7 +176,9 @@ export async function syncLaunches(): Promise<SyncResult> {
       error: null,
     };
   } catch (error: unknown) {
-    const launches = await getCachedLaunches();
+    logger.error("Launch sync failed; using cached data", error);
+
+    const launches = await getCachedOrSeedLaunches();
     const lastSyncedAt = await getLastSyncTime();
 
     return {
