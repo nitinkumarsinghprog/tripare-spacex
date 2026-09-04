@@ -2,6 +2,7 @@
   "name": "tripare-spacex",
   "version": "1.0.0",
   "main": "index.ts",
+  "private": true,
   "dependencies": {
     "@react-native-community/netinfo": "^12.0.1",
     "@react-navigation/bottom-tabs": "^7.18.18",
@@ -14,6 +15,7 @@
     "expo-network": "~57.0.1",
     "expo-sqlite": "~57.0.2",
     "expo-status-bar": "~57.0.1",
+    "jest-expo": "~57.0.5",
     "react": "19.2.3",
     "react-native": "0.86.3",
     "react-native-safe-area-context": "~5.7.0",
@@ -23,6 +25,7 @@
   },
   "devDependencies": {
     "@testing-library/react-native": "^13.3.3",
+    "@types/jest": "^30.0.0",
     "@types/react": "~19.2.2",
     "jest": "^30.5.1",
     "react-test-renderer": "19.2.3",
@@ -32,7 +35,9 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
-  },
-  "private": true
+    "web": "expo start --web",
+    "test": "jest --runInBand",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage --runInBand"
+  }
 }
