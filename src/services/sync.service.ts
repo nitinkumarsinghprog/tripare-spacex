@@ -1,17 +1,26 @@
 import { fetchLaunches } from "../api/launches";
+
 import {
   saveLaunches,
   getCachedLaunches,
   getLastSyncTime,
 } from "../database/launches.repository";
+
+import {
+  getCachedLaunchpad,
+  saveLaunchpad,
+} from "../database/launchpads.repository";
+
 import { initializeDatabase } from "../database/database";
 import { runMigrations } from "../database/migrations";
 import { isNetworkAvailable } from "./network.service";
 import { logger } from "./logging.service";
-import { seedLaunchFixtures } from "../database/fixtures/seed";
 
-const MAX_RETRIES = 3;
-const BASE_RETRY_DELAY = 1000;
+import { seedLaunchFixtures } from "../database/fixtures/seed";
+import { LAUNCHPAD_FIXTURES } from "../database/fixtures/launchpads.fixture";
+
+const MAX_RETRIES = 1;
+const BASE_RETRY_DELAY = 500;
 
 let syncPromise: Promise<SyncResult> | null = null;
 
@@ -58,12 +67,60 @@ async function fetchWithRetry(): Promise<
   throw new Error("Launch synchronization failed");
 }
 
+/**
+ * Make sure launchpad fixtures exist in SQLite.
+ *
+ * This is important because the SpaceX API may be unavailable.
+ * Launches can exist in cache while their related launchpads
+ * are missing.
+ */
+async function ensureLaunchpadFixtures(): Promise<void> {
+  for (const launchpad of LAUNCHPAD_FIXTURES) {
+    const cachedLaunchpad = await getCachedLaunchpad(launchpad.id);
+
+    if (!cachedLaunchpad) {
+      await saveLaunchpad(launchpad);
+
+      logger.info(`Seeded launchpad fixture: ${launchpad.id}`);
+    }
+  }
+}
+
+/**
+ * Get launches from SQLite.
+ *
+ * If no launches exist, seed development fixtures.
+ * Also make sure all launchpad fixtures exist.
+ */
 async function getCachedOrSeedLaunches(): Promise<
   Awaited<ReturnType<typeof getCachedLaunches>>
 > {
   let launches = await getCachedLaunches();
 
+  // Development fixtures are deterministic.
+  // Refresh them so changes to fixture data (such as Media URLs)
+  // are reflected in SQLite.
   if (launches.length > 0) {
+    const isFixtureData = launches.some((launch) =>
+      launch.id.startsWith("fixture-launch-"),
+    );
+
+    if (isFixtureData) {
+      logger.info(
+        "Development fixtures detected; refreshing SQLite fixture data",
+      );
+
+      await seedLaunchFixtures();
+
+      launches = await getCachedLaunches();
+
+      logger.info(
+        `Development fixtures refreshed: ${launches.length} launches`,
+      );
+
+      return launches;
+    }
+
     return launches;
   }
 
@@ -71,8 +128,6 @@ async function getCachedOrSeedLaunches(): Promise<
 
   await seedLaunchFixtures();
 
-  // IMPORTANT:
-  // Read from SQLite again after seeding.
   launches = await getCachedLaunches();
 
   logger.info(`Development fixtures ready: ${launches.length} launches`);
@@ -81,12 +136,18 @@ async function getCachedOrSeedLaunches(): Promise<
 }
 
 export async function initializeSync(): Promise<SyncResult> {
+  // 1. Make sure database exists
   await initializeDatabase();
+
+  // 2. Run migrations
   await runMigrations();
 
+  // 3. Get cached launches and make sure launchpads exist
   const cachedLaunches = await getCachedOrSeedLaunches();
+
   const cachedSyncTime = await getLastSyncTime();
 
+  // 4. Check network
   const networkAvailable = await isNetworkAvailable();
 
   if (!networkAvailable) {
@@ -103,10 +164,15 @@ export async function initializeSync(): Promise<SyncResult> {
     };
   }
 
+  // 5. Try SpaceX API
   try {
     const launches = await fetchWithRetry();
 
     await saveLaunches(launches);
+
+    // Keep launchpad fixtures available even when
+    // the launchpad API is unavailable.
+    await ensureLaunchpadFixtures();
 
     const lastSyncedAt = await getLastSyncTime();
 
@@ -120,6 +186,10 @@ export async function initializeSync(): Promise<SyncResult> {
     };
   } catch (error: unknown) {
     logger.error("Launch sync failed; using cached data", error);
+
+    // API failure (including 525) should not affect
+    // launchpad availability from local SQLite.
+    await ensureLaunchpadFixtures();
 
     return {
       source: "cache",
@@ -146,6 +216,11 @@ export function syncLaunches(): Promise<SyncResult> {
 }
 
 async function performSync(): Promise<SyncResult> {
+  // Make sure DB + migrations are also available
+  // when this function is called independently.
+  await initializeDatabase();
+  await runMigrations();
+
   const networkAvailable = await isNetworkAvailable();
 
   if (!networkAvailable) {
@@ -165,6 +240,8 @@ async function performSync(): Promise<SyncResult> {
 
     await saveLaunches(launches);
 
+    await ensureLaunchpadFixtures();
+
     const lastSyncedAt = await getLastSyncTime();
 
     logger.info(`Launch sync completed: ${launches.length} launches`);
@@ -179,6 +256,7 @@ async function performSync(): Promise<SyncResult> {
     logger.error("Launch sync failed; using cached data", error);
 
     const launches = await getCachedOrSeedLaunches();
+
     const lastSyncedAt = await getLastSyncTime();
 
     return {

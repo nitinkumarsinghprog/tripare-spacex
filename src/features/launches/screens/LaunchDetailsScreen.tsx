@@ -1,4 +1,6 @@
+import React, { useEffect, useState } from "react";
 import {
+  Image,
   Linking,
   Pressable,
   ScrollView,
@@ -6,7 +8,6 @@ import {
   Text,
   View,
 } from "react-native";
-import { useEffect, useState } from "react";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import type { RootStackParamList } from "../../../navigation/RootNavigator";
@@ -36,31 +37,33 @@ function getStatus(launch: Launch): {
     };
   }
 
-  return {
-    label: "Failure",
-    style: "failure",
-  };
-}
+  if (launch.success === false) {
+    return {
+      label: "Failed",
+      style: "failure",
+    };
+  }
 
-function formatDate(date: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(date));
+  return {
+    label: "Unknown",
+    style: "upcoming",
+  };
 }
 
 export function LaunchDetailsScreen({ route }: Props) {
   const { launchId } = route.params;
 
   const [launch, setLaunch] = useState<Launch | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<DetailsTab>("overview");
 
   useEffect(() => {
     let mounted = true;
 
-    async function loadLaunch(): Promise<void> {
+    async function loadLaunch() {
       try {
+        setIsLoading(true);
+
         const cachedLaunch = await getCachedLaunch(launchId);
 
         if (mounted) {
@@ -68,7 +71,7 @@ export function LaunchDetailsScreen({ route }: Props) {
         }
       } finally {
         if (mounted) {
-          setLoading(false);
+          setIsLoading(false);
         }
       }
     }
@@ -80,7 +83,7 @@ export function LaunchDetailsScreen({ route }: Props) {
     };
   }, [launchId]);
 
-  if (loading) {
+  if (isLoading) {
     return (
       <View style={styles.center}>
         <Text style={styles.loadingText}>Loading launch...</Text>
@@ -91,18 +94,25 @@ export function LaunchDetailsScreen({ route }: Props) {
   if (!launch) {
     return (
       <View style={styles.center}>
-        <Text style={styles.errorTitle}>Launch not found</Text>
+        <Text style={styles.errorTitle}>Launch unavailable</Text>
 
         <Text style={styles.errorText}>
-          This launch is not available in the local cache.
+          Launch information could not be loaded.
         </Text>
       </View>
     );
   }
 
+  const status = getStatus(launch);
+
   return (
     <View style={styles.container}>
-      <View style={styles.tabs}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.tabsContainer}
+        contentContainerStyle={styles.tabsContent}
+      >
         <TabButton
           label="Overview"
           active={activeTab === "overview"}
@@ -120,9 +130,11 @@ export function LaunchDetailsScreen({ route }: Props) {
           active={activeTab === "media"}
           onPress={() => setActiveTab("media")}
         />
-      </View>
+      </ScrollView>
 
-      {activeTab === "overview" && <OverviewTab launch={launch} />}
+      {activeTab === "overview" && (
+        <OverviewTab launch={launch} status={status} />
+      )}
 
       {activeTab === "launchpad" && (
         <LaunchpadTab launchpadId={launch.launchpad} />
@@ -133,30 +145,30 @@ export function LaunchDetailsScreen({ route }: Props) {
   );
 }
 
-function OverviewTab({ launch }: { launch: Launch }) {
-  const status = getStatus(launch);
-  const core = launch.cores?.[0];
+function OverviewTab({
+  launch,
+  status,
+}: {
+  launch: Launch;
+  status: ReturnType<typeof getStatus>;
+}) {
+  const formattedDate = new Date(launch.date_utc).toLocaleString();
 
   return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.content}
-    >
-      <View style={styles.hero}>
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+      <View style={styles.header}>
         <Text style={styles.title}>{launch.name}</Text>
 
         <View
           style={[
-            styles.badge,
+            styles.statusBadge,
             status.style === "success" && styles.successBadge,
             status.style === "failure" && styles.failureBadge,
             status.style === "upcoming" && styles.upcomingBadge,
           ]}
         >
-          <Text style={styles.badgeText}>{status.label}</Text>
+          <Text style={styles.statusText}>{status.label}</Text>
         </View>
-
-        <Text style={styles.date}>{formatDate(launch.date_utc)}</Text>
       </View>
 
       <View style={styles.section}>
@@ -165,18 +177,17 @@ function OverviewTab({ launch }: { launch: Launch }) {
         <InfoRow
           label="Flight Number"
           value={
-            launch.flight_number !== null
+            launch.flight_number !== null && launch.flight_number !== undefined
               ? String(launch.flight_number)
-              : "—"
+              : "Unknown"
           }
         />
 
+        <InfoRow label="Date" value={formattedDate} />
+
         <InfoRow label="Rocket" value={launch.rocket} />
 
-        <InfoRow
-          label="Launchpad"
-          value={launch.launchpad ?? "Unknown"}
-        />
+        <InfoRow label="Launchpad" value={launch.launchpad ?? "Unknown"} />
       </View>
 
       {launch.details && (
@@ -186,70 +197,12 @@ function OverviewTab({ launch }: { launch: Launch }) {
           <Text style={styles.details}>{launch.details}</Text>
         </View>
       )}
-
-      {core && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Core Information</Text>
-
-          <InfoRow
-            label="Core Flight"
-            value={
-              core.flight !== null ? String(core.flight) : "—"
-            }
-          />
-
-          <InfoRow
-            label="Reused"
-            value={core.reused ? "Yes" : "No"}
-          />
-
-          <InfoRow
-            label="Landing Attempt"
-            value={core.landing_attempt ? "Yes" : "No"}
-          />
-
-          {core.landing_attempt && (
-            <InfoRow
-              label="Landing Success"
-              value={
-                core.landing_success === null
-                  ? "Unknown"
-                  : core.landing_success
-                    ? "Yes"
-                    : "No"
-              }
-            />
-          )}
-
-          {core.landing_type && (
-            <InfoRow
-              label="Landing Type"
-              value={core.landing_type}
-            />
-          )}
-
-          {core.landpad && (
-            <InfoRow
-              label="Landing Pad"
-              value={core.landpad}
-            />
-          )}
-        </View>
-      )}
     </ScrollView>
   );
 }
 
-function LaunchpadTab({
-  launchpadId,
-}: {
-  launchpadId: string | null;
-}) {
-  const {
-    data: launchpad,
-    isLoading,
-    isError,
-  } = useLaunchpad(launchpadId);
+function LaunchpadTab({ launchpadId }: { launchpadId: string | null }) {
+  const { data: launchpad, isLoading, isError } = useLaunchpad(launchpadId);
 
   if (!launchpadId) {
     return (
@@ -266,9 +219,7 @@ function LaunchpadTab({
   if (isLoading) {
     return (
       <View style={styles.center}>
-        <Text style={styles.loadingText}>
-          Loading launchpad...
-        </Text>
+        <Text style={styles.loadingText}>Loading launchpad...</Text>
       </View>
     );
   }
@@ -276,9 +227,7 @@ function LaunchpadTab({
   if (isError || !launchpad) {
     return (
       <View style={styles.center}>
-        <Text style={styles.errorTitle}>
-          Launchpad unavailable
-        </Text>
+        <Text style={styles.errorTitle}>Launchpad unavailable</Text>
 
         <Text style={styles.errorText}>
           Launchpad information could not be loaded.
@@ -288,22 +237,28 @@ function LaunchpadTab({
   }
 
   return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.content}
-    >
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+      <View style={styles.header}>
+        <Text style={styles.title}>{launchpad.name}</Text>
+
+        <View style={styles.activeBadge}>
+          <Text style={styles.activeBadgeText}>{launchpad.status}</Text>
+        </View>
+      </View>
+
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>
-          {launchpad.full_name}
-        </Text>
+        <Text style={styles.sectionTitle}>Launchpad Information</Text>
 
-        <InfoRow label="Name" value={launchpad.name} />
+        <InfoRow label="Full Name" value={launchpad.full_name} />
 
-        <InfoRow label="Status" value={launchpad.status} />
+        <InfoRow
+          label="Location"
+          value={`${launchpad.locality}, ${launchpad.region}`}
+        />
 
-        <InfoRow label="Locality" value={launchpad.locality} />
+        <InfoRow label="Latitude" value={String(launchpad.latitude)} />
 
-        <InfoRow label="Region" value={launchpad.region} />
+        <InfoRow label="Longitude" value={String(launchpad.longitude)} />
 
         <InfoRow
           label="Launch Attempts"
@@ -314,22 +269,13 @@ function LaunchpadTab({
           label="Successful Launches"
           value={String(launchpad.launch_successes)}
         />
-
-        <InfoRow
-          label="Coordinates"
-          value={`${launchpad.latitude.toFixed(4)}, ${launchpad.longitude.toFixed(4)}`}
-        />
       </View>
 
       {launchpad.details && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            Launchpad Details
-          </Text>
+          <Text style={styles.sectionTitle}>Launchpad Details</Text>
 
-          <Text style={styles.details}>
-            {launchpad.details}
-          </Text>
+          <Text style={styles.details}>{launchpad.details}</Text>
         </View>
       )}
     </ScrollView>
@@ -337,25 +283,53 @@ function LaunchpadTab({
 }
 
 function MediaTab({ launch }: { launch: Launch }) {
-  const webcastUrl = launch.links.webcast;
-  const articleUrl = launch.links.article;
-  const wikipediaUrl = launch.links.wikipedia;
+  console.log("===== MEDIA DEBUG =====");
+  console.log("LAUNCH ID:", launch.id);
+  console.log("LAUNCH LINKS:", JSON.stringify(launch.links, null, 2));
+  console.log("PATCH:", launch.links?.patch);
+  console.log("WEBCAST:", launch.links?.webcast);
+  console.log("ARTICLE:", launch.links?.article);
+  console.log("WIKIPEDIA:", launch.links?.wikipedia);
 
   const patchUrl =
-    launch.links.patch.large ?? launch.links.patch.small;
+    launch.links?.patch?.large ?? launch.links?.patch?.small ?? null;
+
+  const webcastUrl = launch.links?.webcast ?? null;
+  const articleUrl = launch.links?.article ?? null;
+  const wikipediaUrl = launch.links?.wikipedia ?? null;
+
+  console.log("FINAL PATCH URL:", patchUrl);
+  console.log("FINAL WEBCAST URL:", webcastUrl);
+
+  const hasMedia =
+    Boolean(patchUrl) ||
+    Boolean(webcastUrl) ||
+    Boolean(articleUrl) ||
+    Boolean(wikipediaUrl);
 
   return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.content}
-    >
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Media</Text>
 
         {patchUrl && (
-          <Text style={styles.mediaInfo}>
-            Mission patch available
-          </Text>
+          <View style={styles.mediaCard}>
+            <Text style={styles.mediaTitle}>Mission Patch</Text>
+
+            <Image
+              source={{
+                uri: patchUrl,
+              }}
+              style={styles.patchImage}
+              resizeMode="contain"
+              onLoad={() => {
+                console.log("PATCH IMAGE LOADED:", patchUrl);
+              }}
+              onError={(event) => {
+                console.log("PATCH IMAGE ERROR:", event.nativeEvent.error);
+              }}
+            />
+          </View>
         )}
 
         {webcastUrl && (
@@ -385,14 +359,11 @@ function MediaTab({ launch }: { launch: Launch }) {
           />
         )}
 
-        {!patchUrl &&
-          !webcastUrl &&
-          !articleUrl &&
-          !wikipediaUrl && (
-            <Text style={styles.emptyText}>
-              No media is available for this launch.
-            </Text>
-          )}
+        {!hasMedia && (
+          <Text style={styles.emptyText}>
+            No media is available for this launch.
+          </Text>
+        )}
       </View>
     </ScrollView>
   );
@@ -404,68 +375,47 @@ interface TabButtonProps {
   onPress: () => void;
 }
 
-function TabButton({
-  label,
-  active,
-  onPress,
-}: TabButtonProps) {
+function TabButton({ label, active, onPress }: TabButtonProps) {
   return (
     <Pressable
       accessibilityRole="tab"
       accessibilityState={{ selected: active }}
       onPress={onPress}
-      style={[
-        styles.tabButton,
-        active && styles.activeTabButton,
-      ]}
+      style={[styles.tabButton, active && styles.activeTabButton]}
     >
-      <Text
-        style={[
-          styles.tabText,
-          active && styles.activeTabText,
-        ]}
-      >
+      <Text style={[styles.tabText, active && styles.activeTabText]}>
         {label}
       </Text>
     </Pressable>
   );
 }
 
-interface InfoRowProps {
-  label: string;
-  value: string;
-}
-
-function InfoRow({ label, value }: InfoRowProps) {
+function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.infoRow}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.infoLabel}>{label}</Text>
 
-      <Text style={styles.value}>{value}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
     </View>
   );
-}
-
-interface ActionButtonProps {
-  label: string;
-  onPress: () => void;
 }
 
 function ActionButton({
   label,
   onPress,
-}: ActionButtonProps) {
+}: {
+  label: string;
+  onPress: () => void;
+}) {
   return (
     <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
       onPress={onPress}
       style={({ pressed }) => [
         styles.actionButton,
-        pressed && styles.actionPressed,
+        pressed && styles.actionButtonPressed,
       ]}
     >
-      <Text style={styles.actionText}>{label}</Text>
+      <Text style={styles.actionButtonText}>{label}</Text>
     </Pressable>
   );
 }
@@ -473,22 +423,23 @@ function ActionButton({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8fafc",
-  },
-
-  tabs: {
-    flexDirection: "row",
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
     backgroundColor: "#ffffff",
   },
 
+  tabsContainer: {
+    flexGrow: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+  },
+
+  tabsContent: {
+    paddingHorizontal: 16,
+  },
+
   tabButton: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 13,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    marginRight: 8,
     borderBottomWidth: 2,
     borderBottomColor: "transparent",
   },
@@ -498,13 +449,14 @@ const styles = StyleSheet.create({
   },
 
   tabText: {
-    fontSize: 13,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "500",
     color: "#6b7280",
   },
 
   activeTabText: {
     color: "#111827",
+    fontWeight: "700",
   },
 
   scroll: {
@@ -516,51 +468,20 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
 
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-    backgroundColor: "#f8fafc",
-  },
-
-  loadingText: {
-    fontSize: 15,
-    color: "#6b7280",
-  },
-
-  errorTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#111827",
-  },
-
-  errorText: {
-    marginTop: 8,
-    fontSize: 14,
-    textAlign: "center",
-    color: "#6b7280",
-  },
-
-  hero: {
-    padding: 20,
-    borderRadius: 16,
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
+  header: {
+    marginBottom: 20,
   },
 
   title: {
-    fontSize: 25,
-    lineHeight: 31,
-    fontWeight: "800",
+    fontSize: 24,
+    fontWeight: "700",
     color: "#111827",
+    marginBottom: 12,
   },
 
-  badge: {
+  statusBadge: {
     alignSelf: "flex-start",
-    marginTop: 12,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
   },
@@ -574,84 +495,144 @@ const styles = StyleSheet.create({
   },
 
   upcomingBadge: {
-    backgroundColor: "#dbeafe",
+    backgroundColor: "#fef3c7",
   },
 
-  badgeText: {
-    fontSize: 12,
+  statusText: {
+    fontSize: 13,
     fontWeight: "700",
     color: "#111827",
+    textTransform: "capitalize",
   },
 
-  date: {
-    marginTop: 12,
+  activeBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "#dcfce7",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+
+  activeBadgeText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#166534",
+    textTransform: "capitalize",
+  },
+
+  section: {
+    marginBottom: 20,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: "#f9fafb",
+  },
+
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 16,
+  },
+
+  infoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+  },
+
+  infoLabel: {
+    flex: 1,
     fontSize: 14,
     color: "#6b7280",
   },
 
-  section: {
-    marginTop: 16,
-    padding: 18,
-    borderRadius: 16,
+  infoValue: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+    textAlign: "right",
+  },
+
+  details: {
+    fontSize: 15,
+    lineHeight: 23,
+    color: "#374151",
+  },
+
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+    backgroundColor: "#ffffff",
+  },
+
+  loadingText: {
+    fontSize: 16,
+    color: "#6b7280",
+  },
+
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 8,
+  },
+
+  errorText: {
+    fontSize: 14,
+    color: "#6b7280",
+    textAlign: "center",
+  },
+
+  mediaCard: {
+    alignItems: "center",
+    marginBottom: 20,
+    padding: 16,
+    borderRadius: 12,
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#e5e7eb",
   },
 
-  sectionTitle: {
-    marginBottom: 14,
-    fontSize: 17,
-    fontWeight: "800",
+  mediaTitle: {
+    fontSize: 16,
+    fontWeight: "700",
     color: "#111827",
+    marginBottom: 12,
   },
 
-  infoRow: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
-  },
-
-  label: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#9ca3af",
-    textTransform: "uppercase",
-  },
-
-  value: {
-    marginTop: 4,
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#374151",
-  },
-
-  details: {
-    fontSize: 14,
-    lineHeight: 21,
-    color: "#4b5563",
+  patchImage: {
+    width: 220,
+    height: 220,
   },
 
   mediaInfo: {
-    marginBottom: 8,
     fontSize: 14,
     color: "#6b7280",
+    textAlign: "center",
   },
 
   actionButton: {
-    marginTop: 8,
-    paddingVertical: 13,
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 16,
+    marginBottom: 12,
     borderRadius: 10,
     backgroundColor: "#111827",
   },
 
-  actionPressed: {
+  actionButtonPressed: {
     opacity: 0.7,
   },
 
-  actionText: {
-    textAlign: "center",
-    fontSize: 14,
+  actionButtonText: {
+    fontSize: 15,
     fontWeight: "700",
     color: "#ffffff",
   },
@@ -659,5 +640,7 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     color: "#6b7280",
+    textAlign: "center",
+    paddingVertical: 20,
   },
 });

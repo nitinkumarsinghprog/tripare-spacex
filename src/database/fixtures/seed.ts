@@ -1,5 +1,4 @@
 import { initializeDatabase } from "../database";
-
 import { saveLaunches } from "../launches.repository";
 import { saveLaunchpad } from "../launchpads.repository";
 
