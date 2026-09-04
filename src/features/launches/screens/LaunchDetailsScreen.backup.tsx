@@ -6,17 +6,14 @@ import {
   Text,
   View,
 } from "react-native";
-import { useEffect, useState } from "react";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import type { RootStackParamList } from "../../../navigation/RootNavigator";
 import { getCachedLaunch } from "../../../database/launches.repository";
 import type { Launch } from "../../../api/schemas";
-import { useLaunchpad } from "../hooks";
+import { useEffect, useState } from "react";
 
 type Props = NativeStackScreenProps<RootStackParamList, "LaunchDetails">;
-
-type DetailsTab = "overview" | "launchpad" | "media";
 
 function getStatus(launch: Launch): {
   label: string;
@@ -54,7 +51,6 @@ export function LaunchDetailsScreen({ route }: Props) {
 
   const [launch, setLaunch] = useState<Launch | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<DetailsTab>("overview");
 
   useEffect(() => {
     let mounted = true;
@@ -100,48 +96,16 @@ export function LaunchDetailsScreen({ route }: Props) {
     );
   }
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.tabs}>
-        <TabButton
-          label="Overview"
-          active={activeTab === "overview"}
-          onPress={() => setActiveTab("overview")}
-        />
-
-        <TabButton
-          label="Launchpad"
-          active={activeTab === "launchpad"}
-          onPress={() => setActiveTab("launchpad")}
-        />
-
-        <TabButton
-          label="Media"
-          active={activeTab === "media"}
-          onPress={() => setActiveTab("media")}
-        />
-      </View>
-
-      {activeTab === "overview" && <OverviewTab launch={launch} />}
-
-      {activeTab === "launchpad" && (
-        <LaunchpadTab launchpadId={launch.launchpad} />
-      )}
-
-      {activeTab === "media" && <MediaTab launch={launch} />}
-    </View>
-  );
-}
-
-function OverviewTab({ launch }: { launch: Launch }) {
   const status = getStatus(launch);
+
+  const webcastUrl = launch.links.webcast;
+  const articleUrl = launch.links.article;
+  const wikipediaUrl = launch.links.wikipedia;
+
   const core = launch.cores?.[0];
 
   return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.content}
-    >
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.hero}>
         <Text style={styles.title}>{launch.name}</Text>
 
@@ -165,18 +129,13 @@ function OverviewTab({ launch }: { launch: Launch }) {
         <InfoRow
           label="Flight Number"
           value={
-            launch.flight_number !== null
-              ? String(launch.flight_number)
-              : "—"
+            launch.flight_number !== null ? String(launch.flight_number) : "—"
           }
         />
 
         <InfoRow label="Rocket" value={launch.rocket} />
 
-        <InfoRow
-          label="Launchpad"
-          value={launch.launchpad ?? "Unknown"}
-        />
+        <InfoRow label="Launchpad" value={launch.launchpad ?? "Unknown"} />
       </View>
 
       {launch.details && (
@@ -193,15 +152,10 @@ function OverviewTab({ launch }: { launch: Launch }) {
 
           <InfoRow
             label="Core Flight"
-            value={
-              core.flight !== null ? String(core.flight) : "—"
-            }
+            value={core.flight !== null ? String(core.flight) : "—"}
           />
 
-          <InfoRow
-            label="Reused"
-            value={core.reused ? "Yes" : "No"}
-          />
+          <InfoRow label="Reused" value={core.reused ? "Yes" : "No"} />
 
           <InfoRow
             label="Landing Attempt"
@@ -222,212 +176,46 @@ function OverviewTab({ launch }: { launch: Launch }) {
           )}
 
           {core.landing_type && (
-            <InfoRow
-              label="Landing Type"
-              value={core.landing_type}
-            />
+            <InfoRow label="Landing Type" value={core.landing_type} />
           )}
 
-          {core.landpad && (
-            <InfoRow
-              label="Landing Pad"
-              value={core.landpad}
-            />
-          )}
+          {core.landpad && <InfoRow label="Landing Pad" value={core.landpad} />}
         </View>
       )}
-    </ScrollView>
-  );
-}
 
-function LaunchpadTab({
-  launchpadId,
-}: {
-  launchpadId: string | null;
-}) {
-  const {
-    data: launchpad,
-    isLoading,
-    isError,
-  } = useLaunchpad(launchpadId);
-
-  if (!launchpadId) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.errorTitle}>No launchpad</Text>
-
-        <Text style={styles.errorText}>
-          This launch does not have a launchpad assigned.
-        </Text>
-      </View>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.loadingText}>
-          Loading launchpad...
-        </Text>
-      </View>
-    );
-  }
-
-  if (isError || !launchpad) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.errorTitle}>
-          Launchpad unavailable
-        </Text>
-
-        <Text style={styles.errorText}>
-          Launchpad information could not be loaded.
-        </Text>
-      </View>
-    );
-  }
-
-  return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.content}
-    >
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>
-          {launchpad.full_name}
-        </Text>
-
-        <InfoRow label="Name" value={launchpad.name} />
-
-        <InfoRow label="Status" value={launchpad.status} />
-
-        <InfoRow label="Locality" value={launchpad.locality} />
-
-        <InfoRow label="Region" value={launchpad.region} />
-
-        <InfoRow
-          label="Launch Attempts"
-          value={String(launchpad.launch_attempts)}
-        />
-
-        <InfoRow
-          label="Successful Launches"
-          value={String(launchpad.launch_successes)}
-        />
-
-        <InfoRow
-          label="Coordinates"
-          value={`${launchpad.latitude.toFixed(4)}, ${launchpad.longitude.toFixed(4)}`}
-        />
-      </View>
-
-      {launchpad.details && (
+      {(webcastUrl || articleUrl || wikipediaUrl) && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            Launchpad Details
-          </Text>
+          <Text style={styles.sectionTitle}>Links</Text>
 
-          <Text style={styles.details}>
-            {launchpad.details}
-          </Text>
+          {webcastUrl && (
+            <ActionButton
+              label="Watch Webcast"
+              onPress={() => {
+                void Linking.openURL(webcastUrl);
+              }}
+            />
+          )}
+
+          {articleUrl && (
+            <ActionButton
+              label="Read Article"
+              onPress={() => {
+                void Linking.openURL(articleUrl);
+              }}
+            />
+          )}
+
+          {wikipediaUrl && (
+            <ActionButton
+              label="Open Wikipedia"
+              onPress={() => {
+                void Linking.openURL(wikipediaUrl);
+              }}
+            />
+          )}
         </View>
       )}
     </ScrollView>
-  );
-}
-
-function MediaTab({ launch }: { launch: Launch }) {
-  const webcastUrl = launch.links.webcast;
-  const articleUrl = launch.links.article;
-  const wikipediaUrl = launch.links.wikipedia;
-
-  const patchUrl =
-    launch.links.patch.large ?? launch.links.patch.small;
-
-  return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.content}
-    >
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Media</Text>
-
-        {patchUrl && (
-          <Text style={styles.mediaInfo}>
-            Mission patch available
-          </Text>
-        )}
-
-        {webcastUrl && (
-          <ActionButton
-            label="Watch Webcast"
-            onPress={() => {
-              void Linking.openURL(webcastUrl);
-            }}
-          />
-        )}
-
-        {articleUrl && (
-          <ActionButton
-            label="Read Article"
-            onPress={() => {
-              void Linking.openURL(articleUrl);
-            }}
-          />
-        )}
-
-        {wikipediaUrl && (
-          <ActionButton
-            label="Open Wikipedia"
-            onPress={() => {
-              void Linking.openURL(wikipediaUrl);
-            }}
-          />
-        )}
-
-        {!patchUrl &&
-          !webcastUrl &&
-          !articleUrl &&
-          !wikipediaUrl && (
-            <Text style={styles.emptyText}>
-              No media is available for this launch.
-            </Text>
-          )}
-      </View>
-    </ScrollView>
-  );
-}
-
-interface TabButtonProps {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}
-
-function TabButton({
-  label,
-  active,
-  onPress,
-}: TabButtonProps) {
-  return (
-    <Pressable
-      accessibilityRole="tab"
-      accessibilityState={{ selected: active }}
-      onPress={onPress}
-      style={[
-        styles.tabButton,
-        active && styles.activeTabButton,
-      ]}
-    >
-      <Text
-        style={[
-          styles.tabText,
-          active && styles.activeTabText,
-        ]}
-      >
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -451,10 +239,7 @@ interface ActionButtonProps {
   onPress: () => void;
 }
 
-function ActionButton({
-  label,
-  onPress,
-}: ActionButtonProps) {
+function ActionButton({ label, onPress }: ActionButtonProps) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -474,41 +259,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f8fafc",
-  },
-
-  tabs: {
-    flexDirection: "row",
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
-    backgroundColor: "#ffffff",
-  },
-
-  tabButton: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 13,
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
-  },
-
-  activeTabButton: {
-    borderBottomColor: "#111827",
-  },
-
-  tabText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#6b7280",
-  },
-
-  activeTabText: {
-    color: "#111827",
-  },
-
-  scroll: {
-    flex: 1,
   },
 
   content: {
@@ -631,12 +381,6 @@ const styles = StyleSheet.create({
     color: "#4b5563",
   },
 
-  mediaInfo: {
-    marginBottom: 8,
-    fontSize: 14,
-    color: "#6b7280",
-  },
-
   actionButton: {
     marginTop: 8,
     paddingVertical: 13,
@@ -654,10 +398,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     color: "#ffffff",
-  },
-
-  emptyText: {
-    fontSize: 14,
-    color: "#6b7280",
   },
 });

@@ -38,22 +38,14 @@ function createLaunch(index: number): Launch {
   const month = index % 12;
   const day = (index % 27) + 1;
 
-  const date = new Date(
-    Date.UTC(year, month, day, 12, 0, 0),
-  );
+  const date = new Date(Date.UTC(year, month, day, 12, 0, 0));
 
   const isUpcoming = index < 20;
-  const success = isUpcoming
-    ? null
-    : index % 17 === 0
-      ? false
-      : true;
+  const success = isUpcoming ? null : index % 17 === 0 ? false : true;
 
-  const prefix =
-    MISSION_PREFIXES[index % MISSION_PREFIXES.length];
+  const prefix = MISSION_PREFIXES[index % MISSION_PREFIXES.length];
 
-  const suffix =
-    MISSION_SUFFIXES[index % MISSION_SUFFIXES.length];
+  const suffix = MISSION_SUFFIXES[index % MISSION_SUFFIXES.length];
 
   const missionNumber = Math.floor(index / 8) + 1;
 
@@ -84,13 +76,13 @@ function createLaunch(index: number): Launch {
     ],
     links: {
       patch: {
-        small: null,
-        large: null,
+        small: "https://images2.imgbox.com/94/f2/4c4f7V6K.png",
+        large: "https://images2.imgbox.com/94/f2/4c4f7V6K.png",
       },
-      webcast: null,
-      youtube_id: null,
-      wikipedia: null,
-      article: null,
+      webcast: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      youtube_id: "dQw4w9WgXcQ",
+      wikipedia: "https://en.wikipedia.org/wiki/SpaceX",
+      article: "https://www.spacex.com/launches/",
     },
   };
 }

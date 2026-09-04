@@ -1,7 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
+
 import { initializeSync } from "../../services/sync.service";
+import { fetchLaunchpad } from "../../api/launchpads";
+import {
+  getCachedLaunchpad,
+  saveLaunchpad,
+} from "../../database/launchpads.repository";
 
 export const launchQueryKey = ["launches"] as const;
+
+export const launchpadQueryKey = (launchpadId: string) =>
+  ["launchpad", launchpadId] as const;
 
 export function useLaunches() {
   return useQuery({
@@ -10,5 +19,45 @@ export function useLaunches() {
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 60,
     retry: false,
+  });
+}
+
+export function useLaunchpad(launchpadId: string | null) {
+  return useQuery({
+    queryKey: launchpadId
+      ? launchpadQueryKey(launchpadId)
+      : ["launchpad", "empty"],
+
+    queryFn: async () => {
+      if (!launchpadId) {
+        return null;
+      }
+
+      // 1. Try local SQLite first
+      const cachedLaunchpad = await getCachedLaunchpad(launchpadId);
+
+      console.log("LAUNCHPAD ID:", launchpadId);
+      console.log("CACHED LAUNCHPAD:", cachedLaunchpad);
+
+      if (cachedLaunchpad) {
+        return cachedLaunchpad;
+      }
+
+      // 2. Fetch from SpaceX API if not cached
+      const launchpad = await fetchLaunchpad(launchpadId);
+
+      // 3. Persist for offline usage
+      await saveLaunchpad(launchpad);
+
+      return launchpad;
+    },
+
+    enabled: launchpadId !== null,
+
+    staleTime: 1000 * 60 * 60 * 24,
+
+    gcTime: 1000 * 60 * 60 * 24 * 7,
+
+    retry: 2,
   });
 }

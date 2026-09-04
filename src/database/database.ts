@@ -50,6 +50,28 @@ export async function initializeDatabase(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_launches_launchpad
       ON launches(launchpad_id);
 
+    CREATE TABLE IF NOT EXISTS launchpads (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      full_name TEXT NOT NULL,
+      status TEXT NOT NULL,
+      locality TEXT NOT NULL,
+      region TEXT NOT NULL,
+      latitude REAL NOT NULL,
+      longitude REAL NOT NULL,
+      launch_attempts INTEGER NOT NULL,
+      launch_successes INTEGER NOT NULL,
+      details TEXT,
+      data_json TEXT NOT NULL,
+      synced_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_launchpads_name
+      ON launchpads(name);
+
+    CREATE INDEX IF NOT EXISTS idx_launchpads_location
+      ON launchpads(latitude, longitude);
+
     CREATE TABLE IF NOT EXISTS bookmarks (
       launch_id TEXT PRIMARY KEY NOT NULL,
       note TEXT,
