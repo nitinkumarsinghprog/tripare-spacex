@@ -1,4 +1,5 @@
 module.exports = {
+  watchman: false,
   preset: "jest-expo",
   testEnvironment: "jsdom",
   transformIgnorePatterns: [

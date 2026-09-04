@@ -61,3 +61,11 @@ export async function getCachedLaunchpad(
 
   return JSON.parse(row.data_json) as Launchpad;
 }
+
+export async function getCachedLaunchpads(): Promise<Launchpad[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<{ data_json: string }>(
+    "SELECT data_json FROM launchpads ORDER BY name ASC",
+  );
+  return rows.map((row) => JSON.parse(row.data_json) as Launchpad);
+}

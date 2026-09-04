@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { initializeSync, syncLaunches } from "../../services/sync.service";
+import { useAppStore } from "../../store/app.store";
 import { fetchLaunchpad } from "../../api/launchpads";
 import {
   getCachedLaunchpad,
@@ -14,6 +15,9 @@ export const launchpadQueryKey = (launchpadId: string) =>
 
 export function useLaunches() {
   const queryClient = useQueryClient();
+  const setDataSource = useAppStore((state) => state.setDataSource);
+  const setLastSyncedAt = useAppStore((state) => state.setLastSyncedAt);
+  const setSyncError = useAppStore((state) => state.setSyncError);
 
   return useQuery({
     queryKey: launchQueryKey,
@@ -22,12 +26,18 @@ export function useLaunches() {
 
       void syncLaunches()
         .then((syncedResult) => {
+          setDataSource(syncedResult.source);
+          setLastSyncedAt(syncedResult.lastSyncedAt);
+          setSyncError(syncedResult.error?.message ?? null);
           queryClient.setQueryData(launchQueryKey, syncedResult);
         })
         .catch((error: unknown) => {
           console.error("Failed to synchronize launches:", error);
         });
 
+      setDataSource(cachedResult.source);
+      setLastSyncedAt(cachedResult.lastSyncedAt);
+      setSyncError(cachedResult.error?.message ?? null);
       return cachedResult;
     },
     staleTime: 1000 * 60 * 5,

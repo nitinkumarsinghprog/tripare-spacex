@@ -28,6 +28,7 @@ import {
 import type { Launch } from "../../../api/schemas";
 
 import { useLaunchpad } from "../hooks";
+import { LaunchpadMap } from "../components/LaunchpadMap";
 
 type Props = NativeStackScreenProps<RootStackParamList, "LaunchDetails">;
 
@@ -488,6 +489,7 @@ function LaunchpadTab({ launchpadId }: { launchpadId: string | null }) {
           label="Successful Launches"
           value={String(launchpad.launch_successes)}
         />
+        <LaunchpadMap launchpad={launchpad} />
       </View>
 
       {launchpad.details && (

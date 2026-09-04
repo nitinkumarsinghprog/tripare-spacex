@@ -35,6 +35,7 @@ export function LaunchListScreen() {
 
   const isOffline = useAppStore((state) => state.isOffline);
   const lastSyncedAt = useAppStore((state) => state.lastSyncedAt);
+  const syncError = useAppStore((state) => state.syncError);
 
   const launches = data?.launches ?? [];
 
@@ -77,6 +78,11 @@ export function LaunchListScreen() {
       {isOffline && (
         <View style={styles.offlineBanner}>
           <Text style={styles.offlineText}>Offline — showing cached data</Text>
+        </View>
+      )}
+      {syncError && !isOffline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineText}>Sync failed — showing cached data</Text>
         </View>
       )}
 
